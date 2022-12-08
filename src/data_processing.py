@@ -376,10 +376,14 @@ def get_table_1_screening(subjects, consented, roll_up_columns):
         # Get Screening information on ALL subjects
        # Define needed columns for this table and select subset from main dataframe
         t1_cols = roll_up_columns + ['participation_interest_display','record_id']
-        t1 = subjects[t1_cols]
+        t1 = subjects[t1_cols].copy()
 
-        # drop missing data rows
-        t1 = t1.dropna()
+        #treat mcc column as string if present
+        if 'mcc' in t1.columns:
+            t1['mcc'] = t1['mcc'].astype(str)
+
+        # replace missing values with 'no answer'
+        t1[['participation_interest_display']] = t1[['participation_interest_display']].fillna(value="No Answer")
 
         # group by center and participation interest value and count number of IDs in each group
         t1 = t1.groupby(by=roll_up_columns+['participation_interest_display']).count()
@@ -412,7 +416,7 @@ def get_table_1_screening(subjects, consented, roll_up_columns):
         # Reset Index so center is a column
         t1 = t1.reset_index()
 
-        cols_display_order = roll_up_columns + ['All Screened', 'Yes', 'Maybe', 'No','record_id']
+        cols_display_order = roll_up_columns + ['All Screened', 'Yes', 'Maybe', 'No','No Answer', 'record_id']
         t1 = t1[cols_display_order]
 
         # Rename consented count of record_id to 'Consented'
@@ -492,24 +496,27 @@ def get_table_2b_screening(df, start_report, end_report):
 
     return decline_comments
 
-def get_table_3_screening(df,end_report_date = datetime.now(), days_range = 30):
-    t3 = df
+def get_table_3_screening(df,cols_for_groupby, end_report_date = datetime.now(), days_range = 30):
+    t3 = df.copy()
+    #treat mcc column as string if present
+    t3['mcc'] = t3['mcc'].astype(str)
+
     # Get eligible patients using sp field logic
-    # eligible_short is the columns that are used and the same for both surgery types
-    # then assess the criteria *by surgery type* 'TKA' = knee, 'Thoracic' = back
+#    eligible_short is the columns that are used and the same for both surgery types
+# then assess the criteria *by surgery type* 'TKA' = knee, 'Thoracic' = back
     eligible_short = (t3.sp_inclcomply ==1) & (t3.sp_inclage1884 ==1) & (t3.sp_inclsurg ==1) & (t3.sp_exclnoreadspkenglish ==0) & (t3.sp_mricompatscr ==4)
     eligible_knee = (t3.surgery_type == 'TKA') & (t3.sp_exclarthkneerep ==0) & (t3.sp_exclinfdxjoint ==0) & (t3.sp_exclbilkneerep ==0)
     eligible_back = (t3.surgery_type == 'Thoracic') & (t3.sp_exclothmajorsurg ==0) & (t3.sp_exclprevbilthorpro ==0)
     t3['eligible'] = (eligible_short & eligible_knee) | (eligible_short & eligible_back)
 
-    # Get conset within last days range days
+    # Get consent within last days range days
     within_days_range = ((end_report_date - t3.obtain_date).dt.days) <= days_range
     t3['within_range'] = within_days_range
 
     # Aggregate data for table 3
     # Set the columns to groupby, and the the columns to role up with desired aggregating functions
     # Note: can supply a list of aggregate functions to one columnm i.e. 'col_name': ['min','max']
-    cols_for_groupby = ["screening_site","surgery_type"]
+#     cols_for_groupby = ["screening_site","surgery_type"]
     aggregate_columns_dict={'main_record_id':'count',
                             'obtain_date':'max',
                              'eligible':'sum',
@@ -527,10 +534,23 @@ def get_table_3_screening(df,end_report_date = datetime.now(), days_range = 30):
     # Calculate # of ineligible from total - eligible
     t3_aggregate['ineligible'] = t3_aggregate['main_record_id'] - t3_aggregate['eligible']
 
+    # Reorder columns for display
+    cols_display_order = cols_for_groupby + ['main_record_id', 'days_since_consent', 'within_range',
+                          'eligible', 'ineligible',  'ewdateterm'
+       ]
 
-    # Rename and reorder columns for display
+    t3_aggregate = t3_aggregate[cols_display_order]
+
+    # Add aggregate sum row
+    t3_aggregate.loc['All']= t3_aggregate.sum(numeric_only=True, axis=0)
+    t3_aggregate.loc['All',cols_for_groupby] = 'All'
+    t3_aggregate.fillna("", inplace=True)
+
+    # Rename columns for display
     consent_range_col_name = 'Consents in last ' + str(days_range) +' Days'
     rename_dict = {'screening_site':'Screening Site',
+                    'treatment_site':"Center",
+                   'mcc':'MCC',
                    "surgery_type":'Surgery',
                     'main_record_id':'Consented',
                     'days_since_consent':'Days Since Last Consent',
@@ -540,18 +560,9 @@ def get_table_3_screening(df,end_report_date = datetime.now(), days_range = 30):
                    'ewdateterm': 'Total Rescinded'
                   }
     t3_aggregate = t3_aggregate.rename(columns = rename_dict)
-    cols_display_order = ['Screening Site','Surgery','Consented', 'Days Since Last Consent',consent_range_col_name,
-                          'Total Eligible', 'Total ineligible',  'Total Rescinded'
-       ]
-    t3_aggregate = t3_aggregate[cols_display_order]
 
-    # Add aggregate sum row
-    t3_aggregate.loc['All']= t3_aggregate.sum(numeric_only=True, axis=0)
-    t3_aggregate.loc['All','Screening Site'] = 'All Sites'
-    t3_aggregate.fillna("", inplace=True)
 
-    return t3, t3_aggregate
-
+    return t3_aggregate
 # ----------------------------------------------------------------------------
 # Study Status Tables
 # ----------------------------------------------------------------------------
@@ -1085,7 +1096,8 @@ def get_tables(today, start_report, end_report, report_date_msg, report_range_ms
 
     table2b = get_table_2b_screening(subjects, start_report, end_report)
 
-    table3_data, table3 = get_table_3_screening(consented, today, 30)
+    table3a = get_table_3_screening(consented, ["treatment_site","surgery_type"], today, 30)
+    table3b = get_table_3_screening(consented, ["mcc","surgery_type"], today, 30)
 
     ## STUDY Status
     table4 = get_table_4(consented, today)
@@ -1131,7 +1143,7 @@ def get_tables(today, start_report, end_report, report_date_msg, report_range_ms
     age = get_describe_col_subset(age_df, 'Age', 'category')
 
 
-    return table1a, table1b, table2a, table2b, table3, table4, table5, table6, table7a, table7b, table8a, table8b, sex, race, ethnicity, age
+    return table1a, table1b, table2a, table2b, table3a, table3b, table4, table5, table6, table7a, table7b, table8a, table8b, sex, race, ethnicity, age
 
 def get_enrollment_tables(consented):
     enrollment_df = get_enrollment_data(consented)
