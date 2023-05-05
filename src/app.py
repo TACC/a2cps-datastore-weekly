@@ -397,7 +397,7 @@ def build_content(tables_dict, page_meta_dict):
 def subjects_report(page_meta_dict):
     subjects_report = html.Div([
             dbc.Row([
-                dbc.Col(html.H2(['A2CPS Weekly Report']),width = 10),
+                dbc.Col(html.H2(['A2CPS Weekly Report - Preview']),width = 10),
 
             ]),
             dbc.Row([
