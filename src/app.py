@@ -39,7 +39,7 @@ app = Dash(__name__,
                 external_stylesheets=external_stylesheets_list,
                 meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1'}],
                 assets_folder=ASSETS_PATH,
-                requests_pathname_prefix=REQUESTS_PATHNAME_PREFIX,
+                requests_pathname_prefix=os.environ.get("REQUESTS_PATHNAME_PREFIX", "/"),
                 suppress_callback_exceptions=True
                 )
 
@@ -474,6 +474,7 @@ def serve_layout():
 
         # Get data from API
         api_address = DATASTORE_URL + 'subjects'
+        print(api_address)
         api_json = get_api_data(api_address)
 
         # subjects_json = get_subjects_json(report, report_suffix, file_url_root, source=DATA_SOURCE)
