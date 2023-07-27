@@ -3,6 +3,7 @@ import traceback
 # Data
 # File Management
 import os # Operating system library
+import flask
 import pathlib # file paths
 import json
 import requests
@@ -124,7 +125,7 @@ def get_api_data(api_address):
     api_json = {}
     try:
         try:
-            response = requests.get(api_address)
+            response = requests.get(api_address, cookies=flask.request.cookies)
         except:
             return('error: {}'.format(e))
         request_status = response.status_code
