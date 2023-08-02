@@ -3,6 +3,7 @@ import traceback
 # Data
 # File Management
 import os # Operating system library
+import flask
 import pathlib # file paths
 import json
 import requests
@@ -124,7 +125,7 @@ def get_api_data(api_address):
     api_json = {}
     try:
         try:
-            response = requests.get(api_address)
+            response = requests.get(api_address, cookies=flask.request.cookies)
         except:
             return('error: {}'.format(e))
         request_status = response.status_code
@@ -1096,7 +1097,7 @@ def get_tables(today, start_report, end_report, report_date_msg, report_range_ms
 
     table2b = get_table_2b_screening(subjects, start_report, end_report)
 
-    table3a = get_table_3_screening(consented, ["treatment_site","surgery_type"], today, 30)
+    table3a = get_table_3_screening(consented, ["screening_site","surgery_type"], today, 30)
     table3b = get_table_3_screening(consented, ["mcc","surgery_type"], today, 30)
 
     ## STUDY Status
