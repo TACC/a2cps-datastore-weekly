@@ -532,10 +532,10 @@ def serve_layout():
         page_layout = html.Div(id='page_layout')
     except PortalAuthException:
         app.logger.warn('Auth error from datastore, asking user to authenticate')
-        page_layout = html.Div([html.H4('Please login and authenticate on the portal to access the report.')])
+        return html.Div([html.H4('Please login and authenticate on the portal to access the report.')],style=TACC_IFRAME_SIZE)
     except Exception as e:
         traceback.print_exc()
-        page_layout = html.Div(['There has been a problem accessing the data for this Report.'])
+        return html.Div(['There has been a problem accessing the data for this Report.'],style=TACC_IFRAME_SIZE)
 
     s_layout = html.Div([
         dcc.Store(id='store_meta', data = page_meta_dict),
