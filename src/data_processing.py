@@ -13,6 +13,7 @@ import pandas as pd # Dataframe manipulations
 import sqlite3
 import datetime
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 
 # import local modules
 from config_settings import *
@@ -572,9 +573,9 @@ def get_table_4(consented_patients, compare_date = datetime.now()):
     category_cols = ["treatment_site", "surgery_type"]
 
     table4_cols = ["main_record_id",  "start_v1_preop","sp_surg_date",
-                   "start_v2_6wk","start_v3_3mo","start_6mo","start_12mo", 'ewdateterm']
+                   "start_v2_6wk","start_v3_3mo","start_6mo","start_12mo", 'ewdateterm','ewprimaryreason']
 
-    table4 = consented_patients[category_cols + table4_cols]
+    table4 = consented_patients[category_cols + table4_cols].copy()
 
     # Sort by record ID
     table4 = table4.sort_values(by=['main_record_id'])
@@ -585,11 +586,27 @@ def get_table_4(consented_patients, compare_date = datetime.now()):
 
     # Convert Rescinded to boolean
     table4['ewdateterm'] = table4['ewdateterm'].notnull()
+    
+    # Flag dead patients
+    table4['death'] = table4['ewprimaryreason'] == 4    
+    
+    # Determine if patients have 'completed', i.e. reached 7 months
+    def complete_conditions(compare_date, sp_surg_date, ewdateterm):
+        if sp_surg_date is pd.NaT:
+            return False
+        elif ewdateterm:
+            return False
+        else:
+            return compare_date.date() > sp_surg_date.date() + relativedelta(months=7)
 
+    table4['complete'] =  table4.apply(lambda x: complete_conditions(compare_date, x['sp_surg_date'], x['ewdateterm']), axis =1)
+    
     # Aggregate table 4
     agg_dict = {'main_record_id':'size',
                 'start_v1_preop':'sum','surg_complete':'sum','start_v2_6wk': 'sum',
-                'start_v3_3mo': 'sum', 'start_6mo': 'sum', 'start_12mo': 'sum','ewdateterm': 'sum',}
+                'start_v3_3mo': 'sum', 'start_6mo': 'sum', 'start_12mo': 'sum','ewdateterm': 'sum',
+                'death': 'sum', 'complete':'sum' 
+               }
     table4_agg = table4.groupby(category_cols).agg(agg_dict).reset_index()
 
     # fill na with 0
@@ -609,7 +626,10 @@ def get_table_4(consented_patients, compare_date = datetime.now()):
                         'start_v3_3mo': '3 Month',
                         'start_6mo':'6 Month',
                         'start_12mo':'12 Month',
-                        'ewdateterm':'Resc./Early Term.'}
+                        'ewdateterm':'Resc./Early Term.',
+                        'complete':'Completed',
+                        'death':'Deaths'
+                       }
     table4_agg.rename(columns=rename_cols_dict, inplace = True)
 
     table4_agg.loc['All']= table4_agg.sum(numeric_only=True, axis=0)
@@ -1160,82 +1180,3 @@ def get_enrollment_tables(consented):
     summary_rollup = rollup_enrollment_expectations(enrollment_df, enrollment_expectations_df, monthly_expectations)
 
     return mcc1_enrollments, mcc2_enrollments, summary_rollup
-
-
-# ----------------------------------------------------------------------------
-# Enrollment FUNCTIONS - OLD
-# ----------------------------------------------------------------------------
-# def get_enrollment_data(screening_sites,screening_data, consented):
-#     # Load screening sites
-#     screening_sites['start_date'] = pd.to_datetime(screening_sites['start_date'], errors='coerce').dt.date
-#     screening_sites = screening_sites[~(screening_sites.start_date.isna())]
-#
-#     # get enrollment data
-#     enroll_cols = ['record_id','main_record_id','obtain_date', 'redcap_data_access_group_display']
-#     enrolled = consented[consented['ewdateterm'].isna()][enroll_cols] # Do we want to do this?
-#     enrolled = enrolled.merge(screening_data[['record_id','screening_site']], how='left', on='record_id')
-#     enrolled = enrolled.merge(screening_sites[['screening_site','start_month','start_year']], how='left', on='screening_site')
-#     enrolled['obtain_year'] = enrolled['obtain_date'].dt.year
-#     enrolled['obtain_month'] = enrolled['obtain_date'].dt.month
-#     enrolled['study_month'] = 12 * (enrolled['obtain_year'] - enrolled['start_year']) + enrolled['obtain_month'] - enrolled['start_month'] + 1
-#     enrolled['study_month'] = enrolled['study_month'].astype(int)
-#     enrolled['study_month']  = np.where(enrolled['study_month']  < 1, 1, enrolled['study_month'])
-#
-#     #expected data
-#     expect = screening_sites[['screening_site','study_month','expected_enrollment']].copy()
-#     expect['expected_enrollment'] = expect['expected_enrollment'].str.split(', ')
-#     expect['study_month'] = expect['study_month'].str.split(', ')
-#     expected = expect.apply(pd.Series.explode).reset_index(drop=True)
-#     expected.dropna(inplace=True)
-#     expected['expected_enrollment'] = expected['expected_enrollment'].astype(int)
-#     expected_cum = expected.set_index(['screening_site','study_month']).groupby(level=0).cumsum().reset_index()
-#     expected_cum.columns = ['screening_site','study_month','expected_enrollment_cum']
-#     expected = expected.merge(expected_cum, on=['screening_site','study_month'])
-#     expected.rename(columns={"expected_enrollment": "Expected: Monthly", 'expected_enrollment_cum': 'Expected: Cumulative'}, inplace=True)
-#     expected = expected.melt(id_vars=['screening_site', 'study_month'])
-#     expected['study_month'] = expected['study_month'].astype(int)
-#
-#     # get rolled up data
-#     ne = enrolled[['screening_site','study_month','record_id']].copy()
-#     ne = ne.groupby(['screening_site','study_month']).count()
-#
-#     ne_cumsum = ne.groupby(level=0).cumsum().reset_index()
-#     ne_cumsum['variable'] = 'Actual: Cumulative'
-#
-#     ne = ne.reset_index()
-#     ne['variable'] = 'Actual: Monthly'
-#
-#     er = pd.concat([ne,ne_cumsum])
-#
-#     er.rename(columns={"record_id": "value"}, inplace=True)
-#
-#     # Combine enrollment with expected data
-#     enrollment = pd.concat([er,expected])
-#
-#     return enrolled, enrollment
-#
-# def get_site_enrollment(site, enrollment):
-#     df = enrollment[enrollment['screening_site'] == site]
-#     site_df = df.pivot_table(index=['study_month'],
-#                         columns=['screening_site','variable'],
-#                         values='value')
-#     site_df.columns = site_df.columns.droplevel()
-#     site_df.reset_index(inplace=True)
-#     site_df['Study Time: Year'] = site_df['study_month'].apply(lambda x: int((x-1)/12))
-#     site_df['Study Time: Month'] = site_df['study_month'].apply(lambda x: ((x-1) % 12) + 1)
-#
-#     # Fill monthly NA with 0, cumulative with max
-#     site_df['Actual: Monthly'] = site_df['Actual: Monthly'].fillna(0)
-#     site_df['Actual: Cumulative'] = site_df['Actual: Cumulative'].fillna(site_df['Actual: Cumulative'].max())
-#
-#     site_df['Percent: Monthly'] = (100 * site_df['Actual: Monthly'] / site_df['Expected: Monthly']).round(1).astype(str) + '%'
-#     site_df['Percent: Cumulative'] = (100 * site_df['Actual: Cumulative'] / site_df['Expected: Cumulative']).round(1).astype(str) + '%'
-#     site_df.loc[site_df['Actual: Monthly'] == 0, 'Percent: Monthly'] = ''
-#
-#     col_order = [ 'study_month', 'Study Time: Year', 'Study Time: Month',
-#                  'Expected: Monthly', 'Expected: Cumulative',
-#                  'Actual: Monthly', 'Actual: Cumulative',
-#                  'Percent: Monthly', 'Percent: Cumulative'
-#            ]
-#     site_df = site_df[col_order]
-#     return site_df
