@@ -461,9 +461,11 @@ def serve_layout():
     report_date = datetime.now()
 
     try:
+        # TO DO: CONVERT THIS TO ALWAYS PULL DATA FROM DATASTORE
     # get data for page
     # print('time parameters')
         today, start_report, end_report, report_date_msg, report_range_msg  = get_time_parameters(report_date)
+
         if DATA_SOURCE == 'api':
             page_meta_dict['report_date_msg'] = report_date_msg
         elif DATA_SOURCE == 'local':
@@ -473,6 +475,7 @@ def serve_layout():
         page_meta_dict['report_range_msg'] = report_range_msg
         # print('get data inputs')
 
+        # TO DO: CONVERT TO PULL THESES FROM GITHUB
         # display_terms, display_terms_dict, display_terms_dict_multi, clean_weekly, consented, screening_data, clean_adverse, centers_df, r_status = get_data_for_page(ASSETS_PATH, display_terms_file, file_url_root, report, report_suffix, mcc_list)
         display_terms, display_terms_dict, display_terms_dict_multi = load_display_terms(ASSETS_PATH, 'A2CPS_display_terms.csv')
         screening_sites = pd.read_csv(os.path.join(ASSETS_PATH, 'screening_sites.csv'))
@@ -552,15 +555,6 @@ def serve_layout():
     ],style=TACC_IFRAME_SIZE)
     return s_layout
 
-def test_layout():
-    # Load display dictionaries to turn numeric values into display values
-    display_terms, display_terms_dict, display_terms_dict_multi =  load_display_terms(ASSETS_PATH, display_terms_file)
-
-    # Load data from API
-    weekly, r_status = get_subjects_data_from_file(file_url_root, report, report_suffix, mcc_list)
-    return html.Div(r_status)
-
-# app.layout = test_layout
 app.layout = serve_layout
 
 # ----------------------------------------------------------------------------
