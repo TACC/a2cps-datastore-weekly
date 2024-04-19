@@ -19,6 +19,7 @@ from data_processing import *
 from styling import *
 
 # for export
+import logging
 import io
 import flask
 
@@ -42,6 +43,10 @@ app = Dash(__name__,
                 requests_pathname_prefix=os.environ.get("REQUESTS_PATHNAME_PREFIX", "/"),
                 suppress_callback_exceptions=True
                 )
+gunicorn_logger = logging.getLogger('gunicorn.error')
+app.logger = logging.getLogger("weekly_ui")
+app.logger.handlers = gunicorn_logger.handlers
+app.logger.setLevel(logging.INFO)
 
 
 # ----------------------------------------------------------------------------
@@ -477,10 +482,21 @@ def serve_layout():
 
         # Get data from API
         api_address = DATASTORE_URL + 'subjects'
-        print(api_address)
+        app.logger.info('Requesting data from api {0}'.format(api_address))
         api_json = get_api_data(api_address)
 
         # subjects_json = get_subjects_json(report, report_suffix, file_url_root, source=DATA_SOURCE)
+        if 'error' in api_json:
+            app.logger.info('Error response from datastore: {0}'.format(api_json))
+            if 'error_code' in api_json:
+                error_code = api_json['error_code']
+                if error_code in ('MISSING_SESSION_ID', 'INVALID_TAPIS_TOKEN'):
+                    raise PortalAuthException
+
+        # If data is not available, try with bypassing cache and see if that works.
+        if not api_json or 'data' not in api_json:
+            app.logger.info('Requesting data from api {0} to bypass cache.'.format(api_address))
+            api_json = get_api_data(api_address, True)
 
         if api_json:
             subjects = pd.DataFrame.from_dict(api_json['data']['subjects_cleaned'])
@@ -517,9 +533,12 @@ def serve_layout():
         sections_dict['section4'] = section4
 
         page_layout = html.Div(id='page_layout')
+    except PortalAuthException:
+        app.logger.warn('Auth error from datastore, asking user to authenticate')
+        return html.Div([html.H4('Please login and authenticate on the portal to access the report.')],style=TACC_IFRAME_SIZE)
     except Exception as e:
         traceback.print_exc()
-        page_layout = html.Div(['There has been a problem accessing the data for this Report.'])
+        return html.Div(['There has been a problem accessing the data for this Report.'],style=TACC_IFRAME_SIZE)
 
     s_layout = html.Div([
         dcc.Store(id='store_meta', data = page_meta_dict),
