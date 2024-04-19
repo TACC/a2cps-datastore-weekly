@@ -344,7 +344,7 @@ def get_centers(subjects, consented, display_terms):
     # treatment centers
     # centers_list = consented.redcap_data_access_group_display.unique()
     # Convert centers list to use ANY center, not just ones already used
-    centers_list = list(display_terms[display_terms['api_field']=='redcap_data_access_group']['data_dictionary_values'])
+    centers_list = list(display_terms[display_terms['api_field']=='redcap_data_access_group']['display_text'])
 
 
     centers_df = pd.DataFrame(centers_list, columns = ['treatment_site'])
